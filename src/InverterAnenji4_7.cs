@@ -1,6 +1,7 @@
 // Use unique namespaces for your apps if you going to share with others to avoid
 // conflicting names
 
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using NetDaemon.Extensions.MqttEntityManager;
 using System;
@@ -23,10 +24,10 @@ namespace InverterAnenji;
 public class Anenji4000App : IAsyncInitializable
 {
     readonly ILogger<Anenji4000App> _logger;
-    readonly int localPort = 8899;
-    readonly int haInternalLocalPort = 10000;
-    IPEndPoint WiFiAdapterEndPoint = new IPEndPoint(new IPAddress(new byte[] { 192, 168, 0, 119 }), 58899);
-    IPAddress haIpAddress = new IPAddress(new byte[] { 192, 168, 0, 110 });
+    readonly int localPort;
+    readonly int haInternalLocalPort;
+    IPEndPoint WiFiAdapterEndPoint;
+    IPAddress haIpAddress;  
     readonly IHaContext ha;
     readonly IMqttEntityManager entityManager;
     ushort _messageCounter = 1;
@@ -509,19 +510,33 @@ public class Anenji4000App : IAsyncInitializable
         });
     }
 
-    public Anenji4000App(IHaContext ha, ILogger<Anenji4000App> logger, IMqttEntityManager entityManager)
-    {
-        _logger = logger;
-        this.ha = ha;
-        this.entityManager = entityManager;
-        _dataValidator = new InverterDataValidator(_logger);
-        
-        if (isDevelopment)
+    public Anenji4000App(IHaContext ha, ILogger<Anenji4000App> logger, IMqttEntityManager entityManager, IConfiguration configuration)
         {
-            haIpAddress = new IPAddress(new byte[] { 192, 168, 0, 110 });
-        }
-    }
+            _logger = logger;
+            this.ha = ha;
+            this.entityManager = entityManager;
+            _dataValidator = new InverterDataValidator(_logger);
 
+            // Зчитуємо локальний порт із секції NetDaemon
+            localPort = configuration.GetValue<int>("NetDaemon:LocalPort", 8899);
+            
+            // Значення haInternalLocalPort немає в json, тому використовуємо 10000 за замовчуванням
+            haInternalLocalPort = configuration.GetValue<int>("NetDaemon:HaInternalLocalPort", 10000);
+            
+            // Зчитуємо дані інвертора із секції Inverter
+            string wifiIpStr = configuration.GetValue<string>("Inverter:Host") ?? "192.168.1.166";
+            int wifiPort = configuration.GetValue<int>("Inverter:Port", 58899);
+            WiFiAdapterEndPoint = new IPEndPoint(IPAddress.Parse(wifiIpStr), wifiPort);
+            
+            // Зчитуємо IP адресу Home Assistant із секції HomeAssistant
+            string haIpStr = configuration.GetValue<string>("HomeAssistant:Host") ?? "192.168.1.30";
+            haIpAddress = IPAddress.Parse(haIpStr);
+
+            if (isDevelopment)
+            {
+                _logger.LogInformation("Running in Development mode. Configured HA IP: {IP}", haIpAddress);
+            }
+        }
 
 
 }
